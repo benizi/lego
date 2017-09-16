@@ -1,12 +1,17 @@
 package acme
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -16,16 +21,36 @@ import (
 var UserAgent string
 
 // HTTPClient is an HTTP client with a reasonable timeout value.
-var HTTPClient = http.Client{
-	Transport: &http.Transport{
-		Dial: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).Dial,
-		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: 15 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	},
+var HTTPClient http.Client
+
+func init() {
+	rootCAs, _ := x509.SystemCertPool()
+	if rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+	caCertFile := os.Getenv("ACME_EXTRA_CA_CERT_FILE")
+	if caCertFile != "" {
+		cert, err := ioutil.ReadFile(caCertFile)
+		if err != nil {
+			log.Fatalf("Failed to read CA Cert file [%s]: %v", caCertFile, err)
+		}
+		if !rootCAs.AppendCertsFromPEM(cert) {
+			log.Fatalf("No certs found in file [%s]", caCertFile)
+		}
+	}
+
+	HTTPClient = http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ResponseHeaderTimeout: 15 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			TLSClientConfig:       &tls.Config{RootCAs: rootCAs},
+		},
+	}
 }
 
 const (
